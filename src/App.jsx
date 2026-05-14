@@ -21,6 +21,7 @@ import {
   preGeocodeBlocks,
 } from './utils/geocodeBlocks'
 import { loadVillageGeocodes } from './utils/villageGeo'
+import { loadFarmGeocodes } from './utils/loadFarmGeocodes'
 
 /**
  * @param {Array<{ state?: string, cluster_id?: string }>} list
@@ -98,6 +99,9 @@ export default function App() {
   const [clusterSidebarCollapsed, setClusterSidebarCollapsed] = useState(false)
   const [blockGeoWarmProgress, setBlockGeoWarmProgress] = useState(100)
   const [villageGeoCache, setVillageGeoCache] = useState(
+    /** @type {Record<string, [number, number]>} */ ({}),
+  )
+  const [farmGeoCache, setFarmGeoCache] = useState(
     /** @type {Record<string, [number, number]>} */ ({}),
   )
 
@@ -217,6 +221,17 @@ export default function App() {
     void loadVillageGeocodes().then((data) => {
       if (cancelled) return
       setVillageGeoCache(data)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    void loadFarmGeocodes().then((data) => {
+      if (cancelled) return
+      setFarmGeoCache(data)
     })
     return () => {
       cancelled = true
@@ -423,6 +438,7 @@ export default function App() {
           onClusterDrillExit={onClusterDrillExit}
           blockGeoWarmProgress={blockGeoWarmProgress}
           villageGeoCache={villageGeoCache}
+          farmGeoCache={farmGeoCache}
           hideToolbar
           territoriesVisible={territoriesVisible}
           onTerritoriesVisibleChange={setTerritoriesVisible}

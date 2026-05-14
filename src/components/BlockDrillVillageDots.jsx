@@ -4,6 +4,7 @@ import L from 'leaflet'
 import { findVillageCentroidSync } from '../utils/villageCentroid'
 import { resolveBlockToSubdist } from '../utils/blockNameAlias'
 import { VILLAGE_DRILL_DOTS_PANE } from '../utils/clusterDrillMapPanes'
+import { farmGpsCentroid } from '../utils/loadFarmGeocodes'
 
 /**
  * @param {number} farms farm count for this village
@@ -34,6 +35,10 @@ function makeCountIcon(farms, radius) {
  *   already filtered to the selected block (one record per farm)
  * @param {Array<import('geojson').Feature>} [props.villageFeatures]
  * @param {Record<string, [number, number]>} [props.villageGeoCache]
+ * @param {Record<string, [number, number]>} [props.farmGeoCache]
+ *   used to override the geocoded village centroid with the average
+ *   GPS of the farms in this village — more accurate than the
+ *   administrative centre
  * @param {string | null} [props.focusedVillageKey]
  *   uppercase _villageKey for the currently-active village so we can
  *   highlight its dot ring
@@ -51,6 +56,7 @@ export function BlockDrillVillageDots({
   farms,
   villageFeatures = [],
   villageGeoCache = {},
+  farmGeoCache = {},
   focusedVillageKey = null,
   onVillageDotClick,
 }) {
@@ -84,7 +90,7 @@ export function BlockDrillVillageDots({
      * }>} */
     const out = []
     for (const entry of groups.values()) {
-      const hit = findVillageCentroidSync({
+      const fallback = findVillageCentroidSync({
         villageName: entry.villageName,
         blockName: blockKey,
         villageFeatures,
@@ -92,11 +98,28 @@ export function BlockDrillVillageDots({
         subdist,
         stateAbbr,
       })
-      if (!hit) continue
-      out.push({ ...entry, coords: hit.coords, feature: hit.feature })
+      // Prefer the average GPS of the farms in this village — it sits
+      // exactly over the cluster of survey points instead of over the
+      // administrative centre. Fall back to the geocoded centroid when
+      // none of the farms have a GPS hit.
+      const gps = farmGpsCentroid(entry.farms, farmGeoCache)
+      const coords = gps ?? fallback?.coords ?? null
+      if (!coords) continue
+      out.push({
+        ...entry,
+        coords,
+        feature: fallback?.feature ?? null,
+      })
     }
     return out
-  }, [blockKey, stateKey, farms, villageFeatures, villageGeoCache])
+  }, [
+    blockKey,
+    stateKey,
+    farms,
+    villageFeatures,
+    villageGeoCache,
+    farmGeoCache,
+  ])
 
   if (!dots.length) return null
 

@@ -37,6 +37,10 @@ import { getVillageCoords } from '../utils/villageGeo'
 import { findVillageCentroidSync } from '../utils/villageCentroid'
 import { placeClusterVillagePoints } from '../utils/geocodeBlocks'
 import { groupClusterFarmsByVillage, normaliseVillage } from '../utils/groupClusterFarmsByVillage'
+import {
+  splitFarmsByGps,
+  farmGpsCentroid,
+} from '../utils/loadFarmGeocodes'
 import { computeConvexHullLatLng } from '../utils/convexHull'
 import {
   CLUSTER_HULL_PANE,
@@ -642,6 +646,7 @@ export const MapPanel = forwardRef(function MapPanel(
     onClusterDrillExit,
     blockGeoWarmProgress = 100,
     villageGeoCache = /** @type {Record<string, [number, number]>} */ ({}),
+    farmGeoCache = /** @type {Record<string, [number, number]>} */ ({}),
     /** When true, suppress the in-map state/scope/mode toggle pills so
      *  the parent can render them in a floating UI overlay instead. */
     hideToolbar = false,
@@ -672,11 +677,16 @@ export const MapPanel = forwardRef(function MapPanel(
   const wrapRef = useRef(null)
   const mapRef = useRef(/** @type {L.Map | null} */ (null))
   const recordsRef = useRef(records)
+  const farmGeoCacheRef = useRef(farmGeoCache)
   const layerByDistrict = useRef(new Map())
 
   useEffect(() => {
     recordsRef.current = records
   }, [records])
+
+  useEffect(() => {
+    farmGeoCacheRef.current = farmGeoCache
+  }, [farmGeoCache])
 
   const [geo, setGeo] = useState(/** @type {object | null} */ (null))
   const [loadErr, setLoadErr] = useState(/** @type {string | null} */ (null))
@@ -948,7 +958,12 @@ export const MapPanel = forwardRef(function MapPanel(
     return blockFarms.filter((r) => r._villageKey === focusedBlockVillageKey)
   }, [blockFarms, focusedBlockVillageKey])
 
-  /** GeoJSON feature + centroid for the focused village (Level-2 fly). */
+  /** GeoJSON feature + centroid for the focused village (Level-2 fly).
+   *  We always look up the village polygon (used for `flyToBounds`) but
+   *  override the displayed centroid with the GPS centroid of the
+   *  village's farms whenever we have enough survey points — those sit
+   *  exactly over the cluster of pins, not over the village's
+   *  administrative centre. */
   const focusedVillageGeo = useMemo(() => {
     if (!focusedBlockVillageKey) return null
     const hit = focusedVillageFarms[0]
@@ -957,7 +972,7 @@ export const MapPanel = forwardRef(function MapPanel(
     const stU = String(selection?.stateKey ?? '').toUpperCase()
     const stateAbbr =
       stU === 'HARYANA' ? 'HR' : stU === 'PUNJAB' ? 'PB' : ''
-    return findVillageCentroidSync({
+    const fallback = findVillageCentroidSync({
       villageName: hit.village,
       blockName: selection?.blockKey ?? '',
       villageFeatures,
@@ -965,11 +980,20 @@ export const MapPanel = forwardRef(function MapPanel(
       subdist: sub,
       stateAbbr,
     })
+    const gps = farmGpsCentroid(focusedVillageFarms, farmGeoCache)
+    if (gps) {
+      return {
+        coords: gps,
+        feature: fallback?.feature ?? null,
+      }
+    }
+    return fallback
   }, [
     focusedBlockVillageKey,
     focusedVillageFarms,
     villageFeatures,
     villageGeoCache,
+    farmGeoCache,
     selection?.blockKey,
     selection?.stateKey,
   ])
@@ -1280,17 +1304,32 @@ export const MapPanel = forwardRef(function MapPanel(
         window.clearTimeout(villageFlyTimeoutRef.current)
         villageFlyTimeoutRef.current = null
       }
-      const totalFarms = villageFarms.length
-      const ringSize = totalFarms <= 3 ? 0.0002 : 0.0003
-      const pins = villageFarms.map((farm, i) => {
-        const angle = (i / Math.max(totalFarms, 1)) * 2 * Math.PI
-        const r = i === 0 ? 0 : ringSize * Math.ceil(i / 8)
-        const lat = centerLat + r * Math.sin(angle)
-        const lng = centerLng + r * Math.cos(angle)
-        return { farm, position: /** @type {[number, number]} */ ([lat, lng]) }
+      const cache = farmGeoCacheRef.current
+      const { withGps, withoutGps } = splitFarmsByGps(villageFarms, cache)
+      const ringSize = withoutGps.length <= 3 ? 0.0002 : 0.0003
+      /** @type {Array<{ farm: import('../utils/parseExcel.js').FarmRecord, position: [number, number] }>} */
+      const pins = withGps.map(({ farm, coords }) => ({
+        farm,
+        position: coords,
+      }))
+      withoutGps.forEach((farm, i) => {
+        const angle =
+          (i / Math.max(withoutGps.length, 1)) * 2 * Math.PI
+        const r =
+          withoutGps.length === 1 ? 0 : ringSize * Math.ceil(i / 8 + 1)
+        pins.push({
+          farm,
+          position: /** @type {[number, number]} */ ([
+            centerLat + r * Math.sin(angle),
+            centerLng + r * Math.cos(angle),
+          ]),
+        })
       })
       setDrillFarmPins(pins)
       if (import.meta.env?.DEV) {
+        console.log(
+          `[pins] GPS: ${withGps.length}, fallback spiral: ${withoutGps.length}`,
+        )
         console.log('[6] pins placed:', pins.length)
       }
     }
@@ -1593,6 +1632,7 @@ export const MapPanel = forwardRef(function MapPanel(
                 farms={blockFarms}
                 villageFeatures={villageFeatures}
                 villageGeoCache={villageGeoCache}
+                farmGeoCache={farmGeoCache}
                 focusedVillageKey={focusedBlockVillageKey}
                 onVillageDotClick={({ villageKey }) => {
                   if (onFocusedBlockVillageChange) {
@@ -1612,6 +1652,7 @@ export const MapPanel = forwardRef(function MapPanel(
                 farms={focusedVillageFarms}
                 centerCoords={focusedVillageGeo.coords}
                 villageFeature={focusedVillageGeo.feature}
+                farmGeoCache={farmGeoCache}
                 focusedFarmId={focusedBlockFarmId}
                 onFarmFocus={onFocusedBlockFarmChange}
               />
