@@ -1,0 +1,57 @@
+export const DISTRICT_CENTROIDS = {
+  // Haryana
+  AMBALA: [30.3752, 76.7821],
+  BHIWANI: [28.7975, 76.1386],
+  FATEHABAD: [29.5138, 75.4545],
+  HISAR: [29.1492, 75.7217],
+  JHAJJAR: [28.6082, 76.6548],
+  JIND: [29.3159, 76.3194],
+  KAITHAL: [29.8014, 76.3997],
+  KARNAL: [29.6857, 76.9905],
+  KURUKSHETRA: [29.9695, 76.8783],
+  MEWAT: [28.0, 77.0],
+  PALWAL: [28.1487, 77.3313],
+  PANCHKULA: [30.6942, 76.8606],
+  PANIPAT: [29.3909, 76.9635],
+  REWARI: [28.193, 76.6196],
+  ROHTAK: [28.8955, 76.6066],
+  SIRSA: [29.533, 75.0309],
+  SONIPAT: [28.9288, 77.0152],
+  YAMUNANAGAR: [30.129, 77.2674],
+  MAHENDRAGARH: [28.278, 76.1514],
+  CHARKI_DADRI: [28.5921, 76.2697],
+  // Punjab
+  AMRITSAR: [31.634, 74.8723],
+  BARNALA: [30.3782, 75.5478],
+  BATHINDA: [30.211, 74.9455],
+  FARIDKOT: [30.6742, 74.7567],
+  FATEHGARH_SAHIB: [30.6498, 76.3908],
+  FAZILKA: [30.4022, 74.0285],
+  FEROZEPUR: [30.9236, 74.62],
+  GURDASPUR: [32.0377, 75.4058],
+  HOSHIARPUR: [31.5143, 75.9115],
+  JALANDHAR: [31.326, 75.5762],
+  KAPURTHALA: [31.3808, 75.38],
+  LUDHIANA: [30.901, 75.8573],
+  MANSA: [29.9946, 75.3961],
+  MOGA: [30.817, 75.1682],
+  MUKTSAR: [30.4743, 74.516],
+  PATIALA: [30.3398, 76.3869],
+  RUPNAGAR: [30.9645, 76.5243],
+  SAHIBZADA_AJIT_SINGH_NAGAR: [30.7046, 76.7179],
+  SANGRUR: [30.2457, 75.8442],
+  SHAHID_BHAGAT_SINGH_NAGAR: [31.3928, 76.0989],
+  TARN_TARAN: [31.4519, 74.9277],
+}
+
+/**
+ * @param {string | null | undefined} district
+ * @returns {[number, number] | null}
+ */
+export const getClusterCoords = (district) => {
+  const key = String(district ?? '')
+    .trim()
+    .toUpperCase()
+    .replace(/ /g, '_')
+  return DISTRICT_CENTROIDS[key] || null
+}

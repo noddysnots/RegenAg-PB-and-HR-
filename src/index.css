@@ -1,0 +1,40 @@
+@import 'tailwindcss';
+
+/* Village drill count label must not block clicks on the CircleMarker underneath */
+.leaflet-marker-icon.village-drill-count {
+  pointer-events: none !important;
+}
+
+/* Pulsing amber pin for the geocoded village (or fallback block) marker. */
+.farm-village-pin {
+  pointer-events: none;
+  position: relative;
+  width: 20px;
+  height: 20px;
+}
+.farm-village-pin__ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: #d97706;
+  opacity: 0.4;
+  animation: farm-village-pin-pulse 1.5s ease-out infinite;
+  transform-origin: center;
+}
+.farm-village-pin__dot {
+  position: absolute;
+  inset: 4px;
+  border-radius: 9999px;
+  background: #d97706;
+  box-shadow: 0 0 0 1.5px #ffffff, 0 1px 4px rgba(0, 0, 0, 0.25);
+}
+@keyframes farm-village-pin-pulse {
+  0% {
+    transform: scale(1);
+    opacity: 0.42;
+  }
+  100% {
+    transform: scale(2.6);
+    opacity: 0;
+  }
+}
