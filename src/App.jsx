@@ -5,7 +5,6 @@ import { ClusterSidebar } from './components/ClusterSidebar'
 import { downloadClusterRowsAsCsv } from './utils/clusterCsvDownload'
 import { SummaryCards } from './components/SummaryCards'
 import { SurveyorTable } from './components/SurveyorTable'
-import { FarmPanel } from './components/FarmPanel'
 import { BlockDrillPanel } from './components/BlockDrillPanel'
 import { FilteredFarmsPanel } from './components/FilteredFarmsPanel'
 import { parseExcelBuffer } from './utils/parseExcel'
@@ -381,20 +380,28 @@ export default function App() {
   else if (mapMode === 'clusters')
     bottomPanelRightPx = clusterSidebarCollapsed ? 40 : 260
 
-  // Filter-mode bottom panel renders when the dropdown has narrowed the
-  // scope AND no higher-priority panel (surveyor modal, cluster drill,
-  // block-drill village list) is up.
+  // The bottom panel (`FilteredFarmsPanel`) has TWO modes:
+  //   • `surveyor` — a surveyor row was clicked in the right drawer
+  //   • `filter`   — the dropdown filter has narrowed past state-only
+  // Cluster drill-down and block-drill village panels take precedence
+  // over both — they render first and suppress the bottom panel.
   const blockDrillPanelOpen =
     mapMode === 'districts' &&
     Boolean(selection.blockKey) &&
     Boolean(focusedBlockVillageKey) &&
     focusedBlockFarms.length > 0
-  const filterPanelOpen =
-    filterNarrowed &&
-    !filterPanelDismissed &&
-    !panelSurveyorKey &&
-    !selectedClusterId &&
-    !blockDrillPanelOpen
+
+  /** @type {'surveyor' | 'filter' | null} */
+  let bottomPanelMode = null
+  if (!selectedClusterId && !blockDrillPanelOpen) {
+    if (panelSurveyorKey) {
+      bottomPanelMode = 'surveyor'
+    } else if (filterNarrowed && !filterPanelDismissed) {
+      bottomPanelMode = 'filter'
+    }
+  }
+  const bottomPanelFarms =
+    bottomPanelMode === 'surveyor' ? panelFarms : filtered
 
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-[#F7F6F2] font-['IBM_Plex_Sans',sans-serif] text-[#1C3A2A]">
@@ -630,14 +637,6 @@ export default function App() {
         </aside>
       ) : null}
 
-      <FarmPanel
-        key={panelSurveyorKey ?? 'closed'}
-        open={panelSurveyorKey != null}
-        onClose={() => setPanelSurveyorKey(null)}
-        surveyorLabel={panelLabel}
-        farms={panelFarms}
-      />
-
       <BlockDrillPanel
         open={blockDrillPanelOpen}
         title={focusedVillageLabel}
@@ -652,12 +651,17 @@ export default function App() {
       />
 
       <FilteredFarmsPanel
-        open={filterPanelOpen}
+        open={bottomPanelMode != null}
+        mode={bottomPanelMode ?? 'filter'}
         path={filterPath}
-        farms={filtered}
+        surveyorLabel={panelLabel}
+        farms={bottomPanelFarms}
         focusedFarmId={filterFocusedFarmId}
         onFarmRowClick={setFilterFocusedFarmId}
-        onClose={() => setFilterPanelDismissed(true)}
+        onClose={() => {
+          if (bottomPanelMode === 'surveyor') setPanelSurveyorKey(null)
+          else setFilterPanelDismissed(true)
+        }}
         rightOffsetPx={bottomPanelRightPx}
       />
     </div>

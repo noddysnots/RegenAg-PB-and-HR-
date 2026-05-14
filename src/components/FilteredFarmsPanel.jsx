@@ -15,26 +15,31 @@ function authChipClass(status) {
 }
 
 /**
- * Bottom-anchored translucent panel that lists the farms currently in
- * scope of the dropdown filter (State › District › Block › Village).
- * It mirrors `BlockDrillPanel`'s visual language but is driven entirely
- * by `selection` + `filtered`, not by the map-drill flow.
+ * Bottom-anchored translucent panel that lists farms in scope of
+ * either the dropdown filter (`mode='filter'`) or a clicked surveyor
+ * row (`mode='surveyor'`). It mirrors `BlockDrillPanel`'s visual
+ * language but is driven entirely by app-level state, not by the
+ * map-drill flow.
  *
- * The panel sits to the LEFT of the right-side drawer when one is open,
- * so it never lays on top of the summary/cluster sidebars.
+ * The panel sits to the LEFT of the right-side drawer when one is
+ * open, so it never lays on top of the summary/cluster sidebars.
  *
  * @param {object} props
  * @param {boolean} props.open
- * @param {string} props.path        e.g. "Haryana › Yamunanagar › Bilaspur › Malakpur"
+ * @param {'filter' | 'surveyor'} [props.mode]
+ * @param {string} [props.path]            filter-mode title, e.g. "Haryana › Yamunanagar › Bilaspur › Malakpur"
+ * @param {string} [props.surveyorLabel]   surveyor-mode title
  * @param {Array<import('../utils/parseExcel.js').FarmRecord>} props.farms
  * @param {string | null} [props.focusedFarmId]
  * @param {(farmId: string) => void} [props.onFarmRowClick]
  * @param {() => void} [props.onClose]
- * @param {number} [props.rightOffsetPx] match the open drawer's width
+ * @param {number} [props.rightOffsetPx]   match the open drawer's width
  */
 export function FilteredFarmsPanel({
   open,
-  path,
+  mode = 'filter',
+  path = '',
+  surveyorLabel = '',
   farms,
   focusedFarmId = null,
   onFarmRowClick,
@@ -55,27 +60,44 @@ export function FilteredFarmsPanel({
 
   const empty = !farms || farms.length === 0
 
+  const isSurveyor = mode === 'surveyor'
+  const headerTitle = isSurveyor
+    ? surveyorLabel || 'Unassigned'
+    : path || 'All records'
+  const ariaLabel = isSurveyor
+    ? `Farms surveyed by ${headerTitle}`
+    : 'Farms matching current filter'
+
   return (
     <aside
       className="pointer-events-auto absolute bottom-0 left-0 z-[450] flex flex-col border-t-2 border-[#1C3A2A] bg-white/95 shadow-[0_-6px_24px_rgba(28,58,42,0.12)] backdrop-blur-md"
-      style={{ height: 240, right: rightOffsetPx }}
+      style={{ height: 260, right: rightOffsetPx }}
       role="region"
-      aria-label="Farms matching current filter"
+      aria-label={ariaLabel}
     >
-      <header className="flex flex-shrink-0 items-center justify-between gap-3 border-b border-white/15 bg-[#1C3A2A] px-3 py-2 text-white">
-        <div className="flex min-w-0 items-baseline gap-3">
-          <span className="shrink-0 rounded bg-white/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider">
-            Filter
-          </span>
-          <span className="truncate text-sm font-semibold">
-            {path || 'All records'}
-          </span>
+      <header className="flex h-10 flex-shrink-0 items-center justify-between gap-3 border-b border-white/15 bg-[#1C3A2A] px-3 text-white">
+        <div className="flex min-w-0 items-center gap-3">
+          {isSurveyor ? (
+            <button
+              type="button"
+              onClick={onClose}
+              className="shrink-0 rounded bg-white/20 px-2 py-1 text-[11px] font-semibold transition hover:bg-white/30"
+              aria-label="Back to surveyor list"
+            >
+              ← Back
+            </button>
+          ) : (
+            <span className="shrink-0 rounded bg-white/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider">
+              Filter
+            </span>
+          )}
+          <span className="truncate text-sm font-semibold">{headerTitle}</span>
           <span className="shrink-0 text-[11px] text-white/75">
             {farms.length.toLocaleString('en-IN')} farm
             {farms.length === 1 ? '' : 's'}
           </span>
         </div>
-        {onClose ? (
+        {!isSurveyor && onClose ? (
           <button
             type="button"
             onClick={onClose}
