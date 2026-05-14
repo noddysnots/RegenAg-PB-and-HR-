@@ -16,6 +16,7 @@ import {
 } from './utils/filters'
 import { parseClustersCsv } from './utils/parseClustersCsv'
 import { jitterClusters } from './utils/jitterClusters'
+import { resolveDistrict } from './utils/districtNameMap'
 import {
   collectUniqueBlockRows,
   preGeocodeBlocks,
@@ -35,6 +36,32 @@ function clustersForStateScope(list, stateKey) {
     if (sk === 'PUNJAB') return s.includes('PUNJAB')
     if (sk === 'HARYANA') return s.includes('HARYANA')
     return true
+  })
+}
+
+/**
+ * Keep only clusters that have at least one village in the selected
+ * district. The cluster CSV already carries village-level rows with a
+ * `district` string per cluster, so we run each through `resolveDistrict`
+ * (which folds aliases like "SRI MUKTSAR SAHIB" → "MUKTSAR" and
+ * "YAMUNANAGAR" → "YAMUNA NAGAR") and compare against `selection.districtKey`.
+ *
+ * @param {Array<{ cluster_id?: string, districtKey?: string,
+ *   villages?: Array<{ district?: string }> }>} list
+ * @param {string} districtKey canonical key from FilterBar; '' = no filter
+ */
+function clustersForDistrict(list, districtKey) {
+  if (!districtKey) return list
+  const target = String(districtKey).toUpperCase()
+  return list.filter((c) => {
+    if (c.districtKey && String(c.districtKey).toUpperCase() === target) {
+      return true
+    }
+    const villages = c.villages ?? []
+    for (const v of villages) {
+      if (resolveDistrict(v.district) === target) return true
+    }
+    return false
   })
 }
 
@@ -151,14 +178,46 @@ export default function App() {
   )
 
   const scopeClusters = useMemo(
-    () => clustersForStateScope(visibleClusters, selection.stateKey),
-    [visibleClusters, selection.stateKey],
+    () =>
+      clustersForDistrict(
+        clustersForStateScope(visibleClusters, selection.stateKey),
+        selection.districtKey,
+      ),
+    [visibleClusters, selection.stateKey, selection.districtKey],
   )
 
   const mapClusters = useMemo(
     () => jitterClusters(scopeClusters),
     [scopeClusters],
   )
+
+  /** "in Kaithal" / "in Haryana" suffix shown under the sidebar count,
+   *  derived from `selection` + the first cluster village's display
+   *  name so we get the original capitalisation (not the uppercase
+   *  key). Falls back to the raw key when no record matches. */
+  const clusterScopeLabel = useMemo(() => {
+    if (selection.districtKey) {
+      const sample = scopeClusters.find((c) =>
+        (c.villages ?? []).some(
+          (v) => resolveDistrict(v.district) === selection.districtKey,
+        ),
+      )
+      const villageHit = sample?.villages?.find(
+        (v) => resolveDistrict(v.district) === selection.districtKey,
+      )
+      return `in ${villageHit?.district ?? selection.districtKey}`
+    }
+    if (selection.stateKey) {
+      const niceState =
+        selection.stateKey === 'PUNJAB'
+          ? 'Punjab'
+          : selection.stateKey === 'HARYANA'
+            ? 'Haryana'
+            : selection.stateKey
+      return `in ${niceState}`
+    }
+    return ''
+  }, [scopeClusters, selection.districtKey, selection.stateKey])
 
   /** Farms in the focused village of the block-drill flow. The
    *  selection-level filter only requires `_blockKey` + `_villageKey`
@@ -643,6 +702,7 @@ export default function App() {
         >
           <ClusterSidebar
             clusters={scopeClusters}
+            scopeLabel={clusterScopeLabel}
             selectedClusterId={selectedClusterId}
             onClusterSelect={onClusterSelect}
             onDownload={onClusterDownload}

@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 /**
  * @param {object} props
  * @param {Cluster[]} props.clusters
+ * @param {string} [props.scopeLabel] e.g. "in Kaithal" / "in Haryana"
  * @param {string | null} props.selectedClusterId
  * @param {(clusterId: string) => void} props.onClusterSelect
  * @param {(clusterId: string) => void} props.onDownload
@@ -16,6 +17,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
  */
 export function ClusterSidebar({
   clusters,
+  scopeLabel = '',
   selectedClusterId,
   onClusterSelect,
   onDownload,
@@ -83,6 +85,7 @@ export function ClusterSidebar({
           </p>
           <p className="text-[0.65rem] font-medium text-[#1C3A2A]/60">
             {clusters.length.toLocaleString('en-IN')} total
+            {scopeLabel ? ` ${scopeLabel}` : ''}
           </p>
         </div>
         <div className="flex gap-1">
