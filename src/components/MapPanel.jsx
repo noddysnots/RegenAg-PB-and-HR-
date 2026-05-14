@@ -1184,11 +1184,15 @@ export const MapPanel = forwardRef(function MapPanel(
     )
 
     if (import.meta.env?.DEV) {
-      console.log('[1] cluster villages:', cluster.villages.length)
-      console.log('[2] cluster farms from JOIN:', allFarms.length)
+      console.log('[cluster click] villages:', cluster.villages.length)
+      console.log('[cluster click] farms from join:', allFarms.length)
       console.log(
-        '[3] villages with farms:',
+        '[cluster click] villages with farms:',
         [...farmsByVillage.values()].filter((arr) => arr.length > 0).length,
+      )
+      console.log(
+        '[cluster click] farmsByVillage keys:',
+        [...farmsByVillage.keys()],
       )
     }
 
@@ -1279,9 +1283,18 @@ export const MapPanel = forwardRef(function MapPanel(
         : drill.farmsByVillage?.get?.(villageNorm) ?? []
 
     if (import.meta.env?.DEV) {
-      console.log('[5] farms passed to click:', villageFarms.length)
+      console.log(
+        '[dot click] vKey:', villageNorm,
+        '| farms:', villageFarms.length,
+        '| geoCache size:', Object.keys(farmGeoCacheRef.current ?? {}).length,
+      )
     }
-    if (!villageFarms.length) return
+    if (!villageFarms.length) {
+      if (import.meta.env?.DEV) {
+        console.warn('[dot click] farms[] is empty for', point.village)
+      }
+      return
+    }
 
     if (villageFlyTimeoutRef.current != null) {
       window.clearTimeout(villageFlyTimeoutRef.current)
@@ -1328,15 +1341,41 @@ export const MapPanel = forwardRef(function MapPanel(
       setDrillFarmPins(pins)
       if (import.meta.env?.DEV) {
         console.log(
-          `[pins] GPS: ${withGps.length}, fallback spiral: ${withoutGps.length}`,
+          `[placePins] total: ${villageFarms.length}, GPS: ${withGps.length}, spiral: ${withoutGps.length}`,
         )
-        console.log('[6] pins placed:', pins.length)
+        console.log(
+          '[pins placed]',
+          pins.length,
+          'for village',
+          point.village,
+        )
       }
     }
 
-    map.flyTo([centerLat, centerLng], 14, { duration: 1.0, animate: true })
-    map.once('moveend', placePins)
-    villageFlyTimeoutRef.current = window.setTimeout(placePins, 1300)
+    // Skip the moveend wait when the map is already over the village —
+    // a `flyTo` that doesn't move never fires `moveend`, which used to
+    // leave us hanging on the 1.3 s safety timeout before any pins
+    // could appear. Distance < 500 m AND zoom within 1 step counts as
+    // "already there".
+    const TARGET_ZOOM = 14
+    const target = L.latLng(centerLat, centerLng)
+    const currentZoom = map.getZoom()
+    const currentDist =
+      typeof map.getCenter === 'function'
+        ? map.getCenter().distanceTo(target)
+        : Infinity
+
+    if (currentDist < 500 && currentZoom >= TARGET_ZOOM - 1) {
+      placePins()
+    } else {
+      map.once('moveend', placePins)
+      map.flyTo([centerLat, centerLng], TARGET_ZOOM, {
+        duration: 0.8,
+        animate: true,
+      })
+      // Safety fallback: place pins anyway if `moveend` never fires.
+      villageFlyTimeoutRef.current = window.setTimeout(placePins, 1300)
+    }
   }, [])
 
   const handleBackToClusters = useCallback(() => {

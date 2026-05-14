@@ -135,9 +135,13 @@ export function VillageDrillLayer({
                     </b>
                   </p>
                   {hasJoinedRows ? (
-                    <p className="mt-1 opacity-80">Click to see farm IDs</p>
+                    <p className="mt-1 opacity-80">
+                      Click to drop farm pins
+                    </p>
                   ) : (
-                    <p className="mt-1 opacity-75">No spreadsheet rows joined</p>
+                    <p className="mt-1 opacity-75">
+                      No farm data matched
+                    </p>
                   )}
                 </div>
               </Tooltip>
