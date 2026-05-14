@@ -21,6 +21,8 @@ function authChipClass(status) {
  * @param {string | null} [props.focusedVillageNorm] lowercase village name — highlight & scroll rows
  * @param {() => void} props.onBack
  * @param {() => void} props.onClose
+ * @param {() => void} [props.onShowAllOnMap] drop GPS pins for every joined farm
+ * @param {boolean} [props.allOnMap] true while every-farm pins are drawn
  */
 export function ClusterFarmDetailPanel({
   open,
@@ -30,6 +32,8 @@ export function ClusterFarmDetailPanel({
   focusedVillageNorm = null,
   onBack,
   onClose,
+  onShowAllOnMap,
+  allOnMap = false,
 }) {
   const focusRowElRef = useRef(/** @type {HTMLTableRowElement | null} */ (null))
 
@@ -82,13 +86,29 @@ export function ClusterFarmDetailPanel({
             {sorted.length} farms
           </span>
         </div>
-        <button
-          type="button"
-          onClick={onClose}
-          className="shrink-0 text-xs opacity-60 transition hover:opacity-100"
-        >
-          ✕
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          {onShowAllOnMap && sorted.length > 0 ? (
+            <button
+              type="button"
+              onClick={onShowAllOnMap}
+              className={`shrink-0 rounded px-2.5 py-1 text-xs transition ${
+                allOnMap
+                  ? 'bg-amber-400 text-[#1C3A2A] hover:bg-amber-300'
+                  : 'bg-white/20 text-white hover:bg-white/30'
+              }`}
+              title="Drop GPS pins for every farm in this cluster"
+            >
+              {allOnMap ? 'Pins shown on map' : 'Show all on map'}
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={onClose}
+            className="shrink-0 text-xs opacity-60 transition hover:opacity-100"
+          >
+            ✕
+          </button>
+        </div>
       </div>
       <div className="min-h-0 flex-1 overflow-auto">
         {sorted.length === 0 ? (

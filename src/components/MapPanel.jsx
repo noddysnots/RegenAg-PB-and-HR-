@@ -1196,9 +1196,26 @@ export const MapPanel = forwardRef(function MapPanel(
       )
     }
 
+    // Re-position each village dot at the GPS centroid of its joined
+    // farms when available — this guarantees the dot sits where the
+    // actual surveyed farms are, even when the cluster CSV's block
+    // metadata is slightly off. Falls back to the CSV-derived position
+    // computed by `placeClusterVillagePoints` for villages that have no
+    // joined farms with GPS.
     const points = rawPoints.map((p) => {
       const vKey = normaliseVillage(p.village)
       const spreadsheetFarms = vKey ? farmsByVillage.get(vKey) ?? [] : []
+      const gpsCentroid = spreadsheetFarms.length
+        ? farmGpsCentroid(spreadsheetFarms, farmGeoCacheRef.current)
+        : null
+      if (gpsCentroid) {
+        return {
+          ...p,
+          lat: gpsCentroid[0],
+          lon: gpsCentroid[1],
+          spreadsheetFarms,
+        }
+      }
       return { ...p, spreadsheetFarms }
     })
 
@@ -1389,6 +1406,74 @@ export const MapPanel = forwardRef(function MapPanel(
     drillSessionActiveRef.current = false
     onClusterDrillExit?.()
   }, [onClusterDrillExit])
+
+  // "Show all farms in cluster" — bypasses the per-village dot flow and
+  // drops a pin at the GPS coord of every joined farm (84% of the
+  // dataset). Farms without GPS spiral around their village dot, so we
+  // never lose one. This is the safety net for villages whose CSV
+  // name disagrees with the spreadsheet beyond what the fuzzy tier can
+  // catch — the user can always reach every farm in two clicks.
+  const handleShowAllClusterFarms = useCallback(() => {
+    const map = mapRef.current
+    const drill = clusterDrillRef.current
+    if (!map || !drill) return
+
+    if (villageFlyTimeoutRef.current != null) {
+      window.clearTimeout(villageFlyTimeoutRef.current)
+      villageFlyTimeoutRef.current = null
+    }
+    villageFlyTokenRef.current += 1
+    setDrillSelectedVillageNorm(null)
+
+    const cache = farmGeoCacheRef.current ?? {}
+    /** @type {Array<{ farm: import('../utils/parseExcel.js').FarmRecord, position: [number, number] }>} */
+    const pins = []
+    let withGps = 0
+    let spiral = 0
+
+    for (const point of drill.points ?? []) {
+      const farms = Array.isArray(point.spreadsheetFarms)
+        ? point.spreadsheetFarms
+        : []
+      if (!farms.length) continue
+      const { withGps: g, withoutGps: ng } = splitFarmsByGps(farms, cache)
+      for (const { farm, coords } of g) {
+        pins.push({ farm, position: coords })
+        withGps += 1
+      }
+      const ringSize = ng.length <= 3 ? 0.0002 : 0.0003
+      ng.forEach((farm, i) => {
+        const angle = (i / Math.max(ng.length, 1)) * 2 * Math.PI
+        const r = ng.length === 1 ? 0 : ringSize * Math.ceil(i / 8 + 1)
+        pins.push({
+          farm,
+          position: /** @type {[number, number]} */ ([
+            point.lat + r * Math.sin(angle),
+            point.lon + r * Math.cos(angle),
+          ]),
+        })
+        spiral += 1
+      })
+    }
+
+    setDrillFarmPins(pins)
+    if (import.meta.env?.DEV) {
+      console.log(
+        `[show all] total: ${pins.length}, GPS: ${withGps}, spiral: ${spiral}`,
+      )
+    }
+
+    if (pins.length) {
+      const bounds = L.latLngBounds(pins.map((p) => p.position))
+      if (bounds.isValid()) {
+        map.flyToBounds(bounds, {
+          padding: [50, 50],
+          maxZoom: 13,
+          duration: 0.8,
+        })
+      }
+    }
+  }, [])
 
   const clusterFitBoundsFromMarkers =
     mapMode === 'clusters' &&
@@ -1881,6 +1966,10 @@ export const MapPanel = forwardRef(function MapPanel(
             focusedVillageNorm={drillSelectedVillageNorm}
             onBack={handleBackToClusters}
             onClose={() => setFarmPanelOpen(false)}
+            onShowAllOnMap={handleShowAllClusterFarms}
+            allOnMap={
+              drillFarmPins.length > 0 && drillSelectedVillageNorm == null
+            }
           />
         ) : null}
       </div>

@@ -15,6 +15,24 @@ function normaliseVillage(v) {
 }
 
 /**
+ * Aggressive "tight key" for fuzzy village matching: lower-cased and
+ * with every non-alphanumeric character stripped out. Catches the
+ * common name divergences between cluster CSV and spreadsheet — e.g.
+ * `"Harni Khurd"`, `"Harni-Khurd"`, `"Harni_Khurd"`, `"harnikhurd"`
+ * all collapse to `"harnikhurd"`.
+ *
+ * Only used as a fallback after the strict tiers fail; we still
+ * gate the lookup on (district, block) so the same tight name in a
+ * different region can't bleed in.
+ *
+ * @param {unknown} v
+ */
+function tightVillageKey(v) {
+  if (v == null || v === '') return ''
+  return String(v).toLowerCase().replace(/[^a-z0-9]/g, '')
+}
+
+/**
  * For every cluster CSV village, return the spreadsheet rows that join to it
  * using the same 3-tier policy as `getClusterFarms` in `joinFarms.js`:
  *   tier 1 — village + district (with district aliases)
@@ -56,6 +74,11 @@ export function groupClusterFarmsByVillage(clusterVillages, records) {
   const byVB = new Map()
   /** @type {Map<string, import('./parseExcel.js').FarmRecord[]>} */
   const byVS = new Map()
+  // Tight-key fuzzy index, scoped to (district, block). Used only when
+  // every strict tier whiffs — saves cluster villages whose CSV spelling
+  // disagrees slightly with the spreadsheet (`Harni-Khurd` vs `Harni Khurd`).
+  /** @type {Map<string, import('./parseExcel.js').FarmRecord[]>} */
+  const byTightDB = new Map()
 
   for (const r of records) {
     const v = normaliseVillage(r.village)
@@ -81,6 +104,13 @@ export function groupClusterFarmsByVillage(clusterVillages, records) {
       if (arr) arr.push(r)
       else byVS.set(k, [r])
     }
+    const tight = tightVillageKey(r.village)
+    if (tight && d) {
+      const k = `${tight}|${d}${b ? `|${b}` : ''}`
+      const arr = byTightDB.get(k)
+      if (arr) arr.push(r)
+      else byTightDB.set(k, [r])
+    }
   }
 
   /** @type {Set<import('./parseExcel.js').FarmRecord>} */
@@ -99,7 +129,7 @@ export function groupClusterFarmsByVillage(clusterVillages, records) {
     const s = sRaw || clusterState
 
     let matches = d ? byVD.get(`${vKey}|${d}`) : null
-    /** @type {0 | 1 | 2 | 3} */
+    /** @type {0 | 1 | 2 | 3 | 4} */
     let tier = matches && matches.length ? 1 : 0
     if (!tier) {
       matches = b ? byVB.get(`${vKey}|${b}`) : null
@@ -109,10 +139,23 @@ export function groupClusterFarmsByVillage(clusterVillages, records) {
       matches = s ? byVS.get(`${vKey}|${s}`) : null
       if (matches && matches.length) tier = 3
     }
+    // Tier 4: fuzzy village name (separator-stripped) inside the
+    // cluster village's own (district, block). Try the tighter
+    // district+block key first, then district-only.
+    if (!tier) {
+      const tight = tightVillageKey(cv.village)
+      if (tight && d) {
+        if (b) {
+          matches = byTightDB.get(`${tight}|${d}|${b}`) || null
+        }
+        if (!matches?.length) matches = byTightDB.get(`${tight}|${d}`) || null
+        if (matches && matches.length) tier = 4
+      }
+    }
 
     const list = matches ? [...matches] : []
     farmsByVillage.set(vKey, list)
-    tierByVillage.set(vKey, tier)
+    tierByVillage.set(vKey, /** @type {0 | 1 | 2 | 3} */ (tier === 4 ? 3 : tier))
 
     for (const r of list) {
       if (!seen.has(r)) {
